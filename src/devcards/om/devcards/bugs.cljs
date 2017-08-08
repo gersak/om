@@ -1,5 +1,7 @@
 (ns om.devcards.bugs
+  (:require-macros [cljs.core.async.macros :refer [go]])
   (:require [devcards.core :refer-macros [defcard deftest dom-node]]
+            [cljs.core.async :as a]
             [cljs.test :refer-macros [is async]]
             [om.next :as om :refer-macros [defui]]
             [om.dom :as dom]))
@@ -1013,10 +1015,133 @@
                                 (let [st @state]
                                   {:value (om/db->tree query st st)}))})}))
 
+
+;;============================================================================== 
+;; RemoteBlock
+
+(defui ^:once UserForm
+  static om/Ident
+  (ident [this {:keys [id]}] 
+    [:user/id id])
+  static om/IQuery
+  (query [this]
+    [:id :fname :lname :email])
+  Object
+  (checkQueued [this]
+    (.log js/console (str 
+                       "Queued? " 
+                       (->
+                         this
+                         om/get-reconciler
+                         :state
+                         deref
+                         :queued
+                         boolean))))
+  (render [this]
+    (let [{:keys [id fname lname email]} (om/props this)] 
+      (dom/div nil
+               (dom/label nil "First name")
+               (dom/input
+                 #js {:type "text"
+                      :value (str fname)
+                      :onChange (fn [e] 
+                                  (.checkQueued this)
+                                  (om/transact!
+                                    this
+                                    `[(RemoteBlock/update-user {:id ~id
+                                                                :fname ~(.. e -target -value)})]))})
+               (dom/label nil "Last name")
+               (dom/input
+                 #js {:type "text"
+                      :value (str lname)
+                      :onChange (fn [e] 
+                                  (.checkQueued this)
+                                  (om/transact!
+                                    this
+                                    `[(RemoteBlock/update-user {:id ~id
+                                                                :lname ~(.. e -target -value)})]))})
+               (dom/label nil "Email")
+               (dom/input
+                 #js {:type "text"
+                      :value (str email)
+                      :onChange (fn [e] 
+                                  (.checkQueued this)
+                                  (om/transact!
+                                    this
+                                    `[(RemoteBlock/update-user {:id ~id
+                                                                :email ~(.. e -target -value)})]))})
+               (dom/div nil
+                        
+                        (dom/p nil (str "First name is: " fname))
+                        (dom/p nil (str "Last name is: " lname))
+                        (dom/p nil (str "Email is: " email)))))))
+
+(def user-form-factory (om/factory UserForm))
+
+(defui ^:once RemoteBlock
+  static om/Ident
+  (ident [this props]
+    [:User/data (-> props :User/data :id)])
+  static om/IQueryParams
+  (params [this]
+    {:id 1})
+  static om/IQuery
+  (query [this] 
+    `[({:User/data ~(om/get-query UserForm)} {:id ~'?id})])
+  Object
+  (render [this]
+    (let [{user-data :User/data} (om/props this)]
+      (dom/div nil
+               (user-form-factory user-data)
+               (dom/div nil
+                        (dom/button 
+                          #js {:onClick (fn []
+                                          (om/update-query! this assoc-in [:params :id] 2))}
+                          "Get remote user."))))))
+
+(defmulti om-remote-block-read om/dispatch)
+(defmulti om-remote-block-mutate om/dispatch)
+
+(defn send-remote-block [_ cb]
+  (go
+    (a/<! (a/timeout 2000))
+    (cb
+      {:User/data {:id 2 :fname "Peregrin" :lname "Took" :email "peregring@felowship.shire"} }
+      (om/get-query RemoteBlock)
+      #_[{[:user/id 2] (om/get-query UserForm)}]
+      true)))
+
+(defmethod om-remote-block-read :User/data
+  [{:keys [state ast query]} k {:keys [id] :as data}]
+  (let [result (cond-> {:value (om/db->tree  query (get @state k) @state)}
+                 (and (number? id) (not= 1 id)) (assoc :remote ast))]
+    result))
+
+(defmethod om-remote-block-mutate 'RemoteBlock/update-user
+  [{:keys [state ast]} _ {:keys [id] :as data}]
+  {:action (fn []
+             (swap! state update-in [:user/id id] merge data))})
+
+(def om-remote-block-bug-reconciler
+  (om/reconciler
+    {:state {:User/data {:id 1 :fname "Robert" :lname "Hook" :email "hook@neck.com"}}
+     :send send-remote-block
+     :parser (om/parser
+               {:read om-remote-block-read
+                :mutate om-remote-block-mutate})}))
+
+(defcard OM-remote-block-card
+  (dom-node
+    (fn [_ node]
+      (om/add-root! om-remote-block-bug-reconciler RemoteBlock node))))
+
+
+;;============================================================================== 
+
 (defcard test-query-setting
   (dom-node
-   (fn [_ node]
-     (om/add-root! om-779-reconciler OM-779-Root node))))
+    (fn [_ node]
+      (om/add-root! om-779-reconciler OM-779-Root node))))
 
 (defcard om-799-card
   (dom/svg #js {:viewBox "0 0 400 100"}
