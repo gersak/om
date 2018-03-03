@@ -46,6 +46,13 @@
  '[crisptrutski.boot-cljs-test :as bct]
  '[pandeiro.boot-http          :refer [serve]])
 
+(def +version+ "1.0.0-beta2")
+
+(task-options!
+  pom {:project 'kovacnica/om
+       :version +version+}
+  jar {:manifest {"created-by" "Robert Gersak"}})
+
 (deftask devcards []
   (set-env! :source-paths #(conj % "src/devcards")
             :resource-paths #{"resources/public"})
@@ -58,9 +65,9 @@
     (reload)
     (speak)
     (cljs :source-map true
-          :optimizations :none
           :compiler-options {:devcards true
                              :main 'om.devcards.core
+                             :optimizations :advanced
                              :verbose true
                              :parallel-build true}
           :ids #{"devcards/main"})
@@ -105,3 +112,19 @@
     (watch)
     (speak)
     (test :exit? false)))
+
+(deftask install-local
+  []
+  (set-env! 
+    :resource-paths #{"src/main"})
+  (comp (pom) (jar) (install)))
+
+(deftask deploy []
+  (set-env! :resource-paths #{"src/main"})
+  (-> (get-env) :repositories println)
+  (comp 
+    (pom)
+    (jar)
+    (push 
+      :repo "clojars"
+      :gpg-sign (not (.endsWith +version+ "-SNAPSHOT")))))

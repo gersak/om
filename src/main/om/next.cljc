@@ -2518,15 +2518,15 @@
                          next-raw-props (ui->props env c)
                          next-props     (om.next/computed next-raw-props computed)]
                      (when (and (exists? (.-componentWillReceiveProps c))
-                             (iquery? root)
-                             props-change?)
+                                (iquery? root)
+                                props-change?)
                        (let [next-props (if (nil? next-props)
                                           (when-let [props (props c)]
                                             props)
                                           next-props)]
                          ;; `componentWilReceiveProps` is always called before `shouldComponentUpdate`
                          (.componentWillReceiveProps c
-                           #js {:omcljs$value (om-props next-props (p/basis-t this))})))
+                                                     #js {:omcljs$value (om-props next-props (p/basis-t this))})))
                      (when (should-update? c next-props (get-state c))
                        (if-not (nil? next-props)
                          (update-component! c next-props)
@@ -2534,8 +2534,8 @@
                        ;; Only applies if we're doing incremental rendering, not
                        ;; the case in applications without queries
                        (when (and (iquery? root)
-                               (not= c root)
-                               props-change?)
+                                  (not= c root)
+                                  props-change?)
                          (when-let [update-path (path c)]
                            (loop [p (parent c)]
                              (when (some? p)
