@@ -168,12 +168,16 @@
                cfg#     (:config r#)
                st#      (:state cfg#)
                indexer# (:indexer cfg#)]
+           ;; It is possible that user want's do do something with information
+           ;; stored in query before component trully unmounts
+           ~@body
+           ;; Clear om Query for this component
            (when (and (not (nil? st#))
                       (get-in @st# [:om.next/queries this#]))
              (swap! st# update-in [:om.next/queries] dissoc this#))
+           ;; Remove from indexer
            (when-not (nil? indexer#)
-             (om.next.protocols/drop-component! indexer# this#))
-           ~@body)))
+             (om.next.protocols/drop-component! indexer# this#)))))
     'render
     (fn [[name [this :as args] & body]]
       `(~name [this#]
@@ -234,6 +238,7 @@
              cfg#     (:config r#)
              st#      (:state cfg#)
              indexer# (:indexer cfg#)]
+         ; (.log js/console (str "Unmounting: " (type this#)))
          (when (and (not (nil? st#))
                     (get-in @st# [:om.next/queries this#]))
            (swap! st# update-in [:om.next/queries] dissoc this#))
@@ -343,7 +348,9 @@
                        (first forms))
            forms (cond-> forms
                    docstring rest)
+           ;; Collect statics and leave remainig definition in dt
            {:keys [dt statics]} (collect-statics forms)
+           ;; Split @ Object
            [other-protocols obj-dt] (split-with (complement '#{Object}) dt)
            klass-name (symbol (str name "_klass"))
            lifecycle-method-names (set (keys lifecycle-sigs))
@@ -399,6 +406,7 @@
                        (first forms))
            forms (cond-> forms
                    docstring rest)
+           ;; Collect statics and leave rest of definition in dt
            {:keys [dt statics]} (collect-statics forms)
            _ (validate-statics dt)
            rname (if env
@@ -430,6 +438,13 @@
                           'js/undefined)]
        `(do
           ~ctor
+          ;; "reshape" takes rest of definition (after statics) and reshape-map
+          ;; that contains :reshape and :defaults keys.
+          ;; :defaults is a map of default OM implementation of React LifeCycle methods
+          ;; while :reshape methods are used if user want's to override default
+          ;; functionality with specific implementation while still keeping 
+          ;; necessary implementation details for OM. Basically :defaults with
+          ;; placeholder for ~@body custom implementation
           (specify! (.-prototype ~name) ~@(reshape dt reshape-map))
           (set! (.. ~name -prototype -constructor) ~name)
           (set! (.. ~name -prototype -constructor -displayName) ~display-name)
@@ -2525,8 +2540,7 @@
                                             props)
                                           next-props)]
                          ;; `componentWilReceiveProps` is always called before `shouldComponentUpdate`
-                         (.componentWillReceiveProps c
-                                                     #js {:omcljs$value (om-props next-props (p/basis-t this))})))
+                         (.componentWillReceiveProps c #js {:omcljs$value (om-props next-props (p/basis-t this))})))
                      (when (should-update? c next-props (get-state c))
                        (if-not (nil? next-props)
                          (update-component! c next-props)
