@@ -238,7 +238,6 @@
              cfg#     (:config r#)
              st#      (:state cfg#)
              indexer# (:indexer cfg#)]
-         ; (.log js/console (str "Unmounting: " (type this#)))
          (when (and (not (nil? st#))
                     (get-in @st# [:om.next/queries this#]))
            (swap! st# update-in [:om.next/queries] dissoc this#))
@@ -2528,7 +2527,8 @@
           #?(:cljs
              (doseq [c ((:optimize config) cs)]
                (let [props-change? (> (p/basis-t this) (t c))]
-                 (when (mounted? c)
+                 ;; TODO - Checkout why in advanced compilation mounted? isn't working
+                 (when true #_(mounted? c)
                    (let [computed   (get-computed (props c))
                          next-raw-props (ui->props env c)
                          next-props     (om.next/computed next-raw-props computed)]
